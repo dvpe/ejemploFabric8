@@ -21,6 +21,7 @@ import org.flywaydb.core.Flyway;
  */
 public class LogService extends HttpServlet {
 
+
     // Fireup tomcat and register this servlet
     public static void main(String[] args) throws LifecycleException, SQLException {
         Tomcat tomcat = new Tomcat();
