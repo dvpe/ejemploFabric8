@@ -39,9 +39,6 @@
 
     <!--  Current versions as of 2016-2-26: -->
     <docker.maven.plugin.fabric8.version>0.14.1</docker.maven.plugin.fabric8.version>
-    <docker.maven.plugin.wouterd.version>5.0.0</docker.maven.plugin.wouterd.version>
-    <docker.maven.plugin.alexec.version>2.11.9</docker.maven.plugin.alexec.version>
-    <docker.maven.plugin.spotify.version>0.4.1</docker.maven.plugin.spotify.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -110,6 +107,7 @@
                   <!-- ....................................... -->
                   <!-- Build configuration for creating images -->
                   <!-- ....................................... -->
+                  <!-- Todas las imagenes con sección build serán tenidas en cuenta en la etapa build -->
                   <build>
                     <from>java:8u40</from>
                     <!-- Assembly descriptor holds the reference to the created artifact-->
@@ -130,6 +128,7 @@
                   <!-- ............................................................... -->
                   <!-- Runtime configuration for starting/stopping/linking containers -->
                   <!-- ............................................................... -->
+                  <!-- Todas las imagenes con sección run serán tenidas en cuenta en la etapa start -->
                   <run>
                     <!-- Assign dynamically mapped ports to maven variables (which can be reused in integration tests) -->
                     <ports>
@@ -162,15 +161,15 @@
                 <id>start</id>
                 <phase>pre-integration-test</phase>
                 <goals>
-                  <goal>build</goal>
-                  <goal>start</goal>
+                  <goal>build</goal> <!-- Construye imagenes con build sección -->
+                  <goal>start</goal> <!-- Crea y arranca contenedores con run sección -->
                 </goals>
               </execution>
               <execution>
                 <id>stop</id>
                 <phase>post-integration-test</phase>
                 <goals>
-                  <goal>stop</goal>
+                  <goal>stop</goal> <!-- Para y elimina contenedores -->
                 </goals>
               </execution>
             </executions>
@@ -191,239 +190,7 @@
         <activeByDefault/>
       </activation>
     </profile>
-
-    <!--
-      ====== wouterd/docker-maven-plugin =======================================================
-
-      The wouterd plugin uses different configuration sections for building and running images.
-      For building images every file (including the Dockerfile itself) must be referenced.
-
-      To build the images:
-
-      mvn -Pwouterd package docker:build-images
-
-      To create containers and start them:
-
-      mvn -Pwouterd docker:start-containers
-
-      Calling
-
-      mvn -Pwouterd install
-
-      will perform all the above plus more: Create images, start container, run unit tests,
-      stop containers, cleanup.
-
-      Some limitations:
-
-      * Port mapping variables are fixed and not explicitly mentioned in the configuration (one has to guess or look
-        at the Dockerfile to find out the variable names and ports exposed)
-      -->
-    <profile>
-      <id>wouterd</id>
-      <build>
-        <plugins>
-          <plugin>
-            <artifactId>docker-maven-plugin</artifactId>
-            <groupId>net.wouterdanes.docker</groupId>
-            <version>${docker.maven.plugin.wouterd.version}</version>
-            <configuration>
-              <images>
-                <image>
-                  <id>log-service</id>
-                  <nameAndTag>fabric8/${project.artifactId}-wouterd:${project.version}</nameAndTag>
-                  <dockerFile>${project.basedir}/src/main/wouterd/Dockerfile</dockerFile>
-                  <buildArguments>
-                    <artifact>${project.build.finalName}.jar</artifact>
-                  </buildArguments>
-                  <artifacts>
-                    <artifact>
-                      <file>${project.build.directory}/${project.build.finalName}.jar</file>
-                    </artifact>
-                  </artifacts>
-                  <keep>true</keep>
-                </image>
-              </images>
-              <containers>
-                <container>
-                  <id>postgres</id>
-                  <image>postgres:8</image>
-                  <waitForStartup>database system is ready to accept connections</waitForStartup>
-                </container>
-                <container>
-                  <id>log-service</id>
-                  <image>log-service</image>
-                  <links>
-                    <link>
-                      <containerId>postgres</containerId>
-                      <containerAlias>db</containerAlias>
-                    </link>
-                  </links>
-                  <waitForStartup>Starting ProtocolHandler</waitForStartup>
-                </container>
-              </containers>
-            </configuration>
-            <executions>
-              <execution>
-                <id>build</id>
-                <goals>
-                  <goal>build-images</goal>
-                </goals>
-              </execution>
-              <execution>
-                <id>start</id>
-                <goals>
-                  <goal>start-containers</goal>
-                </goals>
-              </execution>
-              <execution>
-                <id>stop</id>
-                <goals>
-                  <goal>stop-containers</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <artifactId>maven-failsafe-plugin</artifactId>
-            <configuration>
-              <systemPropertyVariables>
-                <log.url>http://${docker.containers.log-service.ports.8080/tcp.host}:${docker.containers.log-service.ports.8080/tcp.port}</log.url>
-              </systemPropertyVariables>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-
-   <!--
-      ====== alexec/docker-maven-plugin =======================================================
-
-      The alexec plugin uses external configuration below src/main/docker where each subdirectory
-      specifies an extra image.
-
-      To build the images:
-
-      mvn -Palexec package docker:package
-
-      To start the images:
-
-      mvn -Palexec docker:start
-
-      Run integration tests:
-
-      mvn -Palexec install
-
-      The host exposed with ${docker.log-service.ipAddress} is not routable outside the host running
-      the Docker daemon so when running a setup with a VM like Boot2Docker or docker-machine then the
-      test would need to run within this VM. Hence the integration test code has a workaround to use
-      the ${DOCKER_HOST} in this case. See LogServiceIt for the workaround,
-
-      Other limitations:
-
-      * Cannot influence name of linked containers. You application need to use the given name which
-        is automatically calculated by the artifact name and the image directory name.
-      * Port mapping cannot be dynamically used. Only the ports specified in conf.yml are exported
-        literally
-      -->
-     <profile>
-      <id>alexec</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>com.alexecollins.docker</groupId>
-            <artifactId>docker-maven-plugin</artifactId>
-            <version>${docker.maven.plugin.alexec.version}</version>
-            <configuration>
-              <removeIntermediateImages>true</removeIntermediateImages>
-              <cache>true</cache>
-            </configuration>
-            <executions>
-              <execution>
-                <id>package</id>
-                <goals>
-                  <goal>package</goal>
-                </goals>
-              </execution>
-              <execution>
-                <id>start</id>
-                <goals>
-                  <goal>start</goal>
-                </goals>
-              </execution>
-              <execution>
-                <id>stop</id>
-                <goals>
-                  <goal>stop</goal>
-                </goals>
-              </execution>
-            </executions>
-          </plugin>
-
-          <plugin>
-            <artifactId>maven-failsafe-plugin</artifactId>
-            <configuration>
-              <systemPropertyVariables>
-                <!--  The host is detected internally in LogServiceIT since this plugin has no
-                      way to inject it here -->
-                <log.port>8080</log.port>
-              </systemPropertyVariables>
-            </configuration>
-          </plugin>
-
-
-        </plugins>
-      </build>
-    </profile>
-
-    <!--
-      ====== spotify/docker-maven-plugin =======================================================
-
-      Since this plugin can be only used to build an image, its quite limited. Also we need to use
-      the Dockerfile mode because we want to export a port (which is not possible with the simple
-      configuration)
-
-      Build the image with:
-
-      mvn -Pspotify clean package docker:build
-
-      You can run the image but need to link the postgres image properly:
-
-      docker run -name postgres_cnt -d postgres:8
-      docker run -P -link postgres_cnt:db fabric8/shootout-docker-maven-spotify:0.0.1-SNAPSHOT
-
-      Finally you can run the integration test:
-
-      mvn -Dlog.url=http://localhost:49162 integration-test
-
-      (replace 49162 with the dynamic port as shown by "docker ps")
-     -->
-    <profile>
-      <id>spotify</id>
-      <build>
-        <plugins>
-          <plugin>
-            <groupId>com.spotify</groupId>
-            <artifactId>docker-maven-plugin</artifactId>
-            <version>${docker.maven.plugin.spotify.version}</version>
-            <configuration>
-              <imageName>fabric8/${project.artifactId}-spotify:${project.version}</imageName>
-              <dockerDirectory>src/main/spotify</dockerDirectory>
-              <baseImage>java</baseImage>
-              <cmd>java -Djava.security.egd=file:/dev/./urandom -jar /opt/${project.build.finalName}.jar</cmd>
-              <resources>
-                <resource>
-                  <targetPath>/</targetPath>
-                  <directory>${project.build.directory}</directory>
-                  <include>${project.build.finalName}.jar</include>
-                </resource>
-              </resources>
-            </configuration>
-          </plugin>
-        </plugins>
-      </build>
-    </profile>
-  </profiles>
+</profiles>
 
   <!-- ============================================================================================= -->
 
