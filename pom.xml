@@ -38,7 +38,7 @@
     <tomcat.version>7.0.55</tomcat.version>
 
     <!--  Current versions as of 2016-2-26: -->
-    <docker.maven.plugin.fabric8.version>0.14.1</docker.maven.plugin.fabric8.version>
+    <docker.maven.plugin.fabric8.version>0.20.1</docker.maven.plugin.fabric8.version>
 
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
@@ -82,77 +82,165 @@
               <logDate>default</logDate>
               <autoPull>true</autoPull>
               <images>
-                <!-- Postgres Image is used 'as-is' and is linked into the service image -->
-                <image>
-                  <alias>db</alias>
-                  <name>postgres:8</name>
-                  <run>
-                    <wait>
-                      <log>database system is ready to accept connections</log>
-                      <time>20000</time>
-                    </wait>
-                    <log>
-                      <prefix>DB</prefix>
-                      <color>yellow</color>
-                    </log>
-                  </run>
-                </image>
-
-                <!-- Image holding the artifact of this build -->
                 <image>
                   <!-- Alias name which can used for linking containers during runtime -->
-                  <alias>service</alias>
-                  <name>fabric8/${project.artifactId}-fabric8:${project.version}</name>
-
-                  <!-- ....................................... -->
-                  <!-- Build configuration for creating images -->
-                  <!-- ....................................... -->
-                  <!-- Todas las imagenes con sección build serán tenidas en cuenta en la etapa build -->
-                  <build>
-                    <from>java:8u40</from>
-                    <!-- Assembly descriptor holds the reference to the created artifact-->
+                  <alias>hadoop</alias>
+                  <name>hadoopimagen</name> <!-- Nombre que tendrá la imagen -->
+                  <!-- <build>
+                    <dockerFileDir>hadoop</dockerFileDir>
                     <assembly>
-                      <!-- Normally, one would only use 'assembly.xml' if we could put the assembly descriptor
-                           into src/main/docker But this confuses the alexec plugin, so we put it into another
-                           directory and use an absolute pathe -->
-                      <descriptor>${basedir}/src/main/fabric8/assembly.xml</descriptor>
+                      <inline>
+                        <fileSet>
+                          <directory>${project.build.outputDirectory}</directory>
+                          <outputDirectory>/</outputDirectory>
+                          <includes>
+                            <include>hdfsTestFiles*/**</include>
+                          </includes>
+                        </fileSet>
+                      </inline>
+
+                    </assembly>
+                  </build> -->
+
+                  <build>
+                    <from>10.142.250.69/dockerbaseimages/hadoop-2.7.3:latest</from>
+                    <assembly>
+                      <inline>
+                        <fileSet>
+                          <directory>${project.build.outputDirectory}</directory>
+                          <outputDirectory>/</outputDirectory>
+                          <includes>
+                            <include>hdfsTestFiles*/**</include>
+                          </includes>
+                        </fileSet>
+                      </inline>
                     </assembly>
                     <!-- Expose ports -->
                     <ports>
-                      <port>8080</port>
+                      <port>9000</port>
                     </ports>
-                    <!-- Default command for the build image -->
-                    <cmd>java -Djava.security.egd=file:/dev/./urandom -jar /maven/shootout-docker-maven-fabric8.jar</cmd>
+                    <cmd>bash -c "service ssh restart &amp;&amp; start-dfs.sh  &amp;&amp; /opt/hadoop/bin/hadoop fs -put /maven/* / &amp;&amp; echo 'COMPLETED' &amp;&amp; tail -f /dev/null"</cmd>
                   </build>
 
-                  <!-- ............................................................... -->
-                  <!-- Runtime configuration for starting/stopping/linking containers -->
-                  <!-- ............................................................... -->
-                  <!-- Todas las imagenes con sección run serán tenidas en cuenta en la etapa start -->
                   <run>
-                    <!-- Assign dynamically mapped ports to maven variables (which can be reused in integration tests) -->
                     <ports>
-                      <port>tomcat.port:8080</port>
+                      <port>hadoop.port:9000</port> <!-- Mapeo de puertos. varible:puertolocal:puertocontainer -->
                     </ports>
-                    <wait>
-                      <!-- Check for this URL to return a 200 return code .... -->
-                      <url>http://${docker.host.address}:${tomcat.port}/access</url>
-                      <!-- ... but at max 10 seconds -->
-                      <time>10000</time>
+                    <wait> <!-- Esperamos máximo 2 minutos por COMPLETED en el OUTPUT -->
+                      <time>120000</time>
+                      <log>COMPLETED</log>
                     </wait>
-                    <links>
-                      <!-- Links can be referenced via alias (db) or name (postgres:9). If no link-alias (second "db")
-                           is given it takes the first part (first "db") as link alias. So, <link>db</link> would be
-                           enough here -->
-                      <link>db:db</link>
-                    </links>
                     <log>
-                      <prefix>TC</prefix>
+                      <prefix>HADOOP</prefix>
                       <color>cyan</color>
                     </log>
                   </run>
                 </image>
-              </images>
+
+                <image>
+                  <!-- Alias name which can used for linking containers during runtime -->
+                  <alias>zookeeper</alias>
+                  <name>zookeeperimagen</name> <!-- Nombre que tendrá la imagen -->
+                  <build>
+                    <from>10.142.250.69/dockerbaseimages/zookeeper-3.4.9:latest</from>
+                    <!-- Expose ports -->
+                    <ports>
+                      <port>2181</port>
+                    </ports>
+                  </build>
+
+                  <run>
+                    <ports>
+                      <port>zookeeper.port:2181</port> <!-- Mapeo de puertos. varible:puertolocal:puertocontainer -->
+                    </ports>
+                    <wait>
+                      <time>120000</time>
+                      <log>binding to port 0.0.0.0/0.0.0.0:2181</log>
+                    </wait>
+                    <log>
+                      <prefix>ZOOKEEPER</prefix>
+                      <color>cyan</color>
+                    </log>
+                  </run>
+                </image>
+                <image>
+                  <!-- Alias name which can used for linking containers during runtime -->
+                  <alias>kafka</alias>
+                  <name>kafkaimagen</name> <!-- Nombre que tendrá la imagen -->
+                  <build>
+                    <from>10.142.250.69/dockerbaseimages/kafka-2.11-0.10.1.0:latest</from>
+                    <!-- Expose ports -->
+                    <ports>
+                      <port>9092</port>
+                    </ports>
+                  </build>
+
+                  <run>
+                    <env>
+                      <KAFKA_ADVERTISED_PORT>9092</KAFKA_ADVERTISED_PORT>
+                      <KAFKA_ADVERTISED_HOST_NAME>kafka</KAFKA_ADVERTISED_HOST_NAME>
+                      <KAFKA_ZOOKEEPER_CONNECT>zookeeper:2181</KAFKA_ZOOKEEPER_CONNECT>
+                    </env>
+                    <ports>
+                      <port>9092:9092</port> <!-- Mapeo de puertos. varible:puertolocal:puertocontainer -->
+                    </ports>
+                    <links>
+                      <link>zookeeper:zookeeper</link>
+                    </links>
+                    <wait>
+                      <time>300000</time>
+                      <log>started</log>
+                    </wait>
+                    <log>
+                      <prefix>KAFKA</prefix>
+                      <color>cyan</color>
+                    </log>
+                  </run>
+                </image>
+                <image>
+                  <!-- Alias name which can used for linking containers during runtime -->
+                  <alias>spark</alias>
+                  <name>sparkimagen</name> <!-- Nombre que tendrá la imagen -->
+                  <build>
+                    <from>stratio/mesosphere-spark-scala211</from>
+                    <assembly>
+                    <inline>
+                    <dependencySets>
+                      <dependencySet>
+                        <outputDirectory>jdbc</outputDirectory>
+                        <useProjectArtifact>false</useProjectArtifact>
+                        <includes>
+                          <include>com.datio.commons:examples:jar</include>
+                        </includes>
+                      </dependencySet>
+                    </dependencySets>
+                    </inline>
+                    </assembly>
+                    <!-- Expose ports -->
+                    <ports>
+                      <port>4040</port>
+                      <port>18080</port>
+                      <port>5005</port>
+                    </ports>
+                    <cmd>tail -f /dev/null</cmd>
+                  </build>
+                  <run>
+                    <ports>
+                      <port>4040:4040</port> <!-- Mapeo de puertos. varible:puertolocal:puertocontainer -->
+                      <port>5005:5005</port>
+                      <port>18080:18080</port>
+                    </ports>
+                    <links>
+                      <link>hadoop:hadoop</link>
+                      <link>kafka:kafka</link>
+                    </links>
+                    <log>
+                      <prefix>SPARK</prefix>
+                      <color>cyan</color>
+                    </log>
+                  </run>
+                </image>
+               </images>
             </configuration>
 
             <!-- Hooking into the lifecycle -->
@@ -165,13 +253,13 @@
                   <goal>start</goal> <!-- Crea y arranca contenedores con run sección -->
                 </goals>
               </execution>
-              <execution>
+             <!-- <execution>
                 <id>stop</id>
                 <phase>post-integration-test</phase>
                 <goals>
-                  <goal>stop</goal> <!-- Para y elimina contenedores -->
+                  <goal>stop</goal>
                 </goals>
-              </execution>
+              </execution>-->
             </executions>
           </plugin>
 
@@ -234,6 +322,11 @@
       <artifactId>rest-assured</artifactId>
       <version>2.3.1</version>
       <scope>test</scope>
+    </dependency>
+    <dependency>
+    <groupId>com.datio.commons</groupId>
+    <artifactId>examples</artifactId>
+    <version>1.0.0-SNAPSHOT</version>
     </dependency>
   </dependencies>
 
